@@ -58,6 +58,8 @@
 #include <linux/atomic.h>
 #include <linux/sysctl.h>
 
+#include <stdio.h>//mming
+#include <string.h>//mming
 static struct kmem_cache *mptcp_sock_cache __read_mostly;
 static struct kmem_cache *mptcp_cb_cache __read_mostly;
 static struct kmem_cache *mptcp_tw_cache __read_mostly;
@@ -603,11 +605,38 @@ static void mptcp_set_state(struct sock *sk)
 	}
 }
 
+
+/*mming: set each subflow to use a different congestion control algorithm*/
+void mptcp_set_subflow_congestion_control(struct sock *sk)
+{
+	struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
+	u8 cnt_subflows = mpcb->cnt_subflows;
+	char algo[TCP_CA_NAME_MAX];
+	switch(cnt_subflows)
+	{
+		case 1:
+			strcpy(algo, "cubic");//reno, highspeed, htcp, cubic, illinois, cong, bic,westwood, vegas
+			break;
+		case 2:
+			strcpy(algo, "reno");
+			break;
+	}
+
+	if (tcp_set_congestion_control(sk, algo)!=0)
+	{
+		printf("!!!%s:%s:L=%d: FAILED to set CA to %s exit!\n", __FILE__, __func__, __LINE__, algo);
+		exit(0);
+	}
+	else
+		printf("%s:%s:L=%d: cnt_subflows=%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_subflows, algo);
+}
+
 void mptcp_init_congestion_control(struct sock *sk)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct inet_connection_sock *meta_icsk = inet_csk(mptcp_meta_sk(sk));
 	const struct tcp_congestion_ops *ca = meta_icsk->icsk_ca_ops;
+
 
 	/* The application didn't set the congestion control to use
 	 * fallback to the default one.
@@ -631,7 +660,11 @@ void mptcp_init_congestion_control(struct sock *sk)
 
 use_default:
 	icsk->icsk_ca_ops = &tcp_init_congestion_ops;
+	mptcp_set_subflow_congestion_control (sk);//mming
 	tcp_init_congestion_control(sk);
+
+	struct inet_connection_sock *icsk_tem = inet_csk(sk);//mming
+	printf("%s:%s:L=%d: CA is set to %s\n", __FILE__, __func__, __LINE__, icsk_tem->icsk_ca_ops->name);//mming
 }
 
 u32 mptcp_secret[MD5_MESSAGE_BYTES / 4] ____cacheline_aligned;

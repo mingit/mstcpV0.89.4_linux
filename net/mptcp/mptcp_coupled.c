@@ -31,6 +31,8 @@
 
 #include <linux/module.h>
 
+#include <stdio.h>//mming
+
 /* Scaling is done in the numerator with alpha_scale_num and in the denominator
  * with alpha_scale_den.
  *
@@ -95,7 +97,7 @@ static void mptcp_ccc_recalc_alpha(struct sock *sk)
 	 * (set alpha to 1)
 	 */
 	if (mpcb->cnt_established <= 1)
-		goto exit;
+		goto exit;//alpha = 1
 
 	/* Do regular alpha-calculation for multiple subflows */
 
@@ -186,6 +188,7 @@ static void mptcp_ccc_set_state(struct sock *sk, u8 ca_state)
 
 static void mptcp_ccc_cong_avoid(struct sock *sk, u32 ack, u32 acked, u32 in_flight)
 {
+	printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct mptcp_cb *mpcb = tp->mpcb;
 	int snd_cwnd;

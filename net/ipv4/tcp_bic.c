@@ -16,6 +16,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <net/tcp.h>
+#include <stdio.h>//mming
 
 
 #define BICTCP_BETA_SCALE    1024	/* Scale factor beta calculation

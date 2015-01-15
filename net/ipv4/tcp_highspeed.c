@@ -8,7 +8,7 @@
 
 #include <linux/module.h>
 #include <net/tcp.h>
-
+#include <stdio.h>//mming
 
 /* From AIMD tables from RFC 3649 appendix B,
  * with fixed-point MD scaled <<8.
@@ -111,6 +111,8 @@ static void hstcp_init(struct sock *sk)
 
 static void hstcp_cong_avoid(struct sock *sk, u32 ack, u32 acked, u32 in_flight)
 {
+	printf("%s:%s:L=%d", __FILE__, __func__, __LINE__);//mming
+	exit(0);
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct hstcp *ca = inet_csk_ca(sk);
 

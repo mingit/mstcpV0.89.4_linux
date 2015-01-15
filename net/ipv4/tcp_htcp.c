@@ -10,6 +10,8 @@
 #include <linux/module.h>
 #include <net/tcp.h>
 
+#include <stdio.h>//mming
+
 #define ALPHA_BASE	(1<<7)	/* 1.0 with shift << 7 */
 #define BETA_MIN	(1<<6)	/* 0.5 with shift << 7 */
 #define BETA_MAX	102	/* 0.8 with shift << 7 */

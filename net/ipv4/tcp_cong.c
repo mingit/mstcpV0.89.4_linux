@@ -15,6 +15,8 @@
 #include <linux/gfp.h>
 #include <net/tcp.h>
 
+#include <stdio.h>//mming
+
 static DEFINE_SPINLOCK(tcp_cong_list_lock);
 static LIST_HEAD(tcp_cong_list);
 
@@ -22,8 +24,9 @@ static LIST_HEAD(tcp_cong_list);
 static struct tcp_congestion_ops *tcp_ca_find(const char *name)
 {
 	struct tcp_congestion_ops *e;
-
-	list_for_each_entry_rcu(e, &tcp_cong_list, list) {
+	
+	list_for_each_entry_rcu(e, &tcp_cong_list, list) 
+	{
 		if (strcmp(e->name, name) == 0)
 			return e;
 	}
@@ -82,6 +85,7 @@ void tcp_init_congestion_control(struct sock *sk)
 	/* if no choice made yet assign the current value set as default */
 	if (icsk->icsk_ca_ops == &tcp_init_congestion_ops) {
 		rcu_read_lock();
+
 		list_for_each_entry_rcu(ca, &tcp_cong_list, list) {
 			if (try_module_get(ca->owner)) {
 				icsk->icsk_ca_ops = ca;
@@ -127,8 +131,9 @@ int tcp_set_default_congestion_control(const char *name)
 
 	if (ca) {
 		ca->flags |= TCP_CONG_NON_RESTRICTED;	/* default is always allowed */
-		list_move(&ca->list, &tcp_cong_list);
+		list_move(&ca->list, &tcp_cong_list);//move ca to the head of the list
 		ret = 0;
+		printf("%s:%s:L=%d: ca->name=%s, name=%s\n", __FILE__, __func__, __LINE__, ca->name, name);//mming
 	}
 	spin_unlock(&tcp_cong_list_lock);
 
@@ -339,6 +344,7 @@ EXPORT_SYMBOL_GPL(tcp_cong_avoid_ai);
  */
 void tcp_reno_cong_avoid(struct sock *sk, u32 ack, u32 acked, u32 in_flight)
 {
+	printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	if (!tcp_is_cwnd_limited(sk, in_flight))

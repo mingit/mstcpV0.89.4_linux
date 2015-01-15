@@ -28,6 +28,8 @@
 #include <linux/math64.h>
 #include <net/tcp.h>
 
+#include <stdio.h>//mming
+
 #define BICTCP_BETA_SCALE    1024	/* Scale factor beta calculation
 					 * max_cwnd = snd_cwnd * beta
 					 */
@@ -307,6 +309,8 @@ static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
 static void bictcp_cong_avoid(struct sock *sk, u32 ack, u32 acked,
 			      u32 in_flight)
 {
+	printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
+	//exit(0);//mming
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct bictcp *ca = inet_csk_ca(sk);
 

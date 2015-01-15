@@ -39,6 +39,7 @@
 #include <net/tcp.h>
 
 #include "tcp_vegas.h"
+#include <stdio.h>//mming
 
 static int alpha = 2;
 static int beta  = 4;
@@ -166,6 +167,7 @@ static inline u32 tcp_vegas_ssthresh(struct tcp_sock *tp)
 static void tcp_vegas_cong_avoid(struct sock *sk, u32 ack, u32 acked,
 				 u32 in_flight)
 {
+	printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct vegas *vegas = inet_csk_ca(sk);
 

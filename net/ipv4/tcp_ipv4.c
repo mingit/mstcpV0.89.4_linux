@@ -88,6 +88,8 @@
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
 
+#include <stdio.h>//mming
+
 int sysctl_tcp_tw_reuse __read_mostly;
 int sysctl_tcp_low_latency __read_mostly;
 EXPORT_SYMBOL(sysctl_tcp_low_latency);
