@@ -344,7 +344,7 @@ EXPORT_SYMBOL_GPL(tcp_cong_avoid_ai);
  */
 void tcp_reno_cong_avoid(struct sock *sk, u32 ack, u32 acked, u32 in_flight)
 {
-	printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
+	//printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	if (!tcp_is_cwnd_limited(sk, in_flight))

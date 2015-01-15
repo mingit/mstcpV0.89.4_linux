@@ -627,8 +627,8 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 		printf("!!!%s:%s:L=%d: FAILED to set CA to %s exit!\n", __FILE__, __func__, __LINE__, algo);
 		exit(0);
 	}
-	else
-		printf("%s:%s:L=%d: cnt_subflows=%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_subflows, algo);
+	//else
+		//printf("%s:%s:L=%d: cnt_subflows=%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_subflows, algo);
 }
 
 void mptcp_init_congestion_control(struct sock *sk)
