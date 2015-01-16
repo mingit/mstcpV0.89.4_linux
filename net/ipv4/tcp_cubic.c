@@ -152,8 +152,310 @@ static inline void bictcp_hystart_reset(struct sock *sk)
 	ca->curr_rtt = 0;
 	ca->sample_cnt = 0;
 }
-/*mming*/
 
+
+static void bictcp_state(struct sock *sk, u8 new_state)
+{
+	if (new_state == TCP_CA_Loss) {
+		bictcp_reset(inet_csk_ca(sk));
+		bictcp_hystart_reset(sk);
+	}
+}
+
+static void bictcp_init(struct sock *sk)
+{
+	struct bictcp *ca = inet_csk_ca(sk);
+
+	bictcp_reset(ca);
+	ca->loss_cwnd = 0;
+
+	if (hystart)
+		bictcp_hystart_reset(sk);
+
+	if (!hystart && initial_ssthresh)
+		tcp_sk(sk)->snd_ssthresh = initial_ssthresh;
+}
+
+/* calculate the cubic root of x using a table lookup followed by one
+ * Newton-Raphson iteration.
+ * Avg err ~= 0.195%
+ */
+static u32 cubic_root(u64 a)
+{
+	u32 x, b, shift;
+	/*
+	 * cbrt(x) MSB values for x MSB values in [0..63].
+	 * Precomputed then refined by hand - Willy Tarreau
+	 *
+	 * For x in [0..63],
+	 *   v = cbrt(x << 18) - 1
+	 *   cbrt(x) = (v[x] + 10) >> 6
+	 */
+	static const u8 v[] = {
+		/* 0x00 */    0,   54,   54,   54,  118,  118,  118,  118,
+		/* 0x08 */  123,  129,  134,  138,  143,  147,  151,  156,
+		/* 0x10 */  157,  161,  164,  168,  170,  173,  176,  179,
+		/* 0x18 */  181,  185,  187,  190,  192,  194,  197,  199,
+		/* 0x20 */  200,  202,  204,  206,  209,  211,  213,  215,
+		/* 0x28 */  217,  219,  221,  222,  224,  225,  227,  229,
+		/* 0x30 */  231,  232,  234,  236,  237,  239,  240,  242,
+		/* 0x38 */  244,  245,  246,  248,  250,  251,  252,  254,
+	};
+
+	b = fls64(a);
+	if (b < 7) {
+		/* a in [0..63] */
+		return ((u32)v[(u32)a] + 35) >> 6;
+	}
+
+	b = ((b * 84) >> 8) - 1;
+	shift = (a >> (b * 3));
+
+	x = ((u32)(((u32)v[shift] + 10) << b)) >> 6;
+
+	/*
+	 * Newton-Raphson iteration
+	 *                         2
+	 * x    = ( 2 * x  +  a / x  ) / 3
+	 *  k+1          k         k
+	 */
+	x = (2 * x + (u32)div64_u64(a, (u64)x * (u64)(x - 1)));
+	x = ((x * 341) >> 10);
+	return x;
+}
+
+/*
+ * Compute congestion window to use.
+ */
+static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
+{
+	u32 delta, bic_target, max_cnt;
+	u64 offs, t;
+
+	ca->ack_cnt++;	/* count the number of ACKs */
+
+	if (ca->last_cwnd == cwnd &&
+			(s32)(tcp_time_stamp - ca->last_time) <= HZ / 32)
+		return;
+
+	ca->last_cwnd = cwnd;
+	ca->last_time = tcp_time_stamp;
+
+	if (ca->epoch_start == 0) {
+		ca->epoch_start = tcp_time_stamp;	/* record the beginning of an epoch */
+		ca->ack_cnt = 1;			/* start counting */
+		ca->tcp_cwnd = cwnd;			/* syn with cubic */
+
+		if (ca->last_max_cwnd <= cwnd) {
+			ca->bic_K = 0;
+			ca->bic_origin_point = cwnd;
+		} else {
+			/* Compute new K based on
+			 * (wmax-cwnd) * (srtt>>3 / HZ) / c * 2^(3*bictcp_HZ)
+			 */
+			ca->bic_K = cubic_root(cube_factor
+					* (ca->last_max_cwnd - cwnd));
+			ca->bic_origin_point = ca->last_max_cwnd;
+		}
+	}
+
+	/* cubic function - calc*/
+	/* calculate c * time^3 / rtt,
+	 *  while considering overflow in calculation of time^3
+	 * (so time^3 is done by using 64 bit)
+	 * and without the support of division of 64bit numbers
+	 * (so all divisions are done by using 32 bit)
+	 *  also NOTE the unit of those veriables
+	 *	  time  = (t - K) / 2^bictcp_HZ
+	 *	  c = bic_scale >> 10
+	 * rtt  = (srtt >> 3) / HZ
+	 * !!! The following code does not have overflow problems,
+	 * if the cwnd < 1 million packets !!!
+	 */
+
+	t = (s32)(tcp_time_stamp - ca->epoch_start);
+	t += msecs_to_jiffies(ca->delay_min >> 3);
+	/* change the unit from HZ to bictcp_HZ */
+	t <<= BICTCP_HZ;
+	do_div(t, HZ);
+
+	if (t < ca->bic_K)		/* t - K */
+		offs = ca->bic_K - t;
+	else
+		offs = t - ca->bic_K;
+
+	/* c/rtt * (t-K)^3 */
+	delta = (cube_rtt_scale * offs * offs * offs) >> (10+3*BICTCP_HZ);
+	if (t < ca->bic_K)                                	/* below origin*/
+		bic_target = ca->bic_origin_point - delta;
+	else                                                	/* above origin*/
+		bic_target = ca->bic_origin_point + delta;
+
+	/* cubic function - calc bictcp_cnt*/
+	if (bic_target > cwnd) {
+		ca->cnt = cwnd / (bic_target - cwnd);
+	} else {
+		ca->cnt = 100 * cwnd;              /* very small increment*/
+	}
+
+	/*
+	 * The initial growth of cubic function may be too conservative
+	 * when the available bandwidth is still unknown.
+	 */
+	if (ca->last_max_cwnd == 0 && ca->cnt > 20)
+		ca->cnt = 20;	/* increase cwnd 5% per RTT */
+
+	/* TCP Friendly */
+	if (tcp_friendliness) {
+		u32 scale = beta_scale;
+		delta = (cwnd * scale) >> 3;
+		while (ca->ack_cnt > delta) {		/* update tcp cwnd */
+			ca->ack_cnt -= delta;
+			ca->tcp_cwnd++;
+		}
+
+		if (ca->tcp_cwnd > cwnd){	/* if bic is slower than tcp */
+			delta = ca->tcp_cwnd - cwnd;
+			max_cnt = cwnd / delta;
+			if (ca->cnt > max_cnt)
+				ca->cnt = max_cnt;
+		}
+	}
+
+	ca->cnt = (ca->cnt << ACK_RATIO_SHIFT) / ca->delayed_ack;
+	if (ca->cnt == 0)			/* cannot be zero */
+		ca->cnt = 1;
+}
+
+static void bictcp_cong_avoid(struct sock *sk, u32 ack, u32 acked,
+		u32 in_flight)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct bictcp *ca = inet_csk_ca(sk);
+
+	if (!tcp_is_cwnd_limited(sk, in_flight))
+		return;
+
+	if (tp->snd_cwnd <= tp->snd_ssthresh) 
+	{
+		if (hystart && after(ack, ca->end_seq))
+			bictcp_hystart_reset(sk);
+		tcp_slow_start(tp, acked);
+	} 
+	else 
+	{
+		bictcp_update(ca, tp->snd_cwnd);
+		tcp_cong_avoid_ai(tp, ca->cnt);
+	}
+
+}
+
+
+
+static u32 bictcp_recalc_ssthresh(struct sock *sk)
+{
+	const struct tcp_sock *tp = tcp_sk(sk);
+	struct bictcp *ca = inet_csk_ca(sk);
+
+	ca->epoch_start = 0;	/* end of epoch */
+
+	/* Wmax and fast convergence */
+	if (tp->snd_cwnd < ca->last_max_cwnd && fast_convergence)
+		ca->last_max_cwnd = (tp->snd_cwnd * (BICTCP_BETA_SCALE + beta))
+			/ (2 * BICTCP_BETA_SCALE);
+	else
+		ca->last_max_cwnd = tp->snd_cwnd;
+
+	ca->loss_cwnd = tp->snd_cwnd;
+
+	return max((tp->snd_cwnd * beta) / BICTCP_BETA_SCALE, 2U);
+}
+
+static u32 bictcp_undo_cwnd(struct sock *sk)
+{
+	struct bictcp *ca = inet_csk_ca(sk);
+
+	return max(tcp_sk(sk)->snd_cwnd, ca->loss_cwnd);
+}
+
+
+static void hystart_update(struct sock *sk, u32 delay)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct bictcp *ca = inet_csk_ca(sk);
+
+	if (!(ca->found & hystart_detect)) {
+		u32 now = bictcp_clock();
+
+		/* first detection parameter - ack-train detection */
+		if ((s32)(now - ca->last_ack) <= hystart_ack_delta) {
+			ca->last_ack = now;
+			if ((s32)(now - ca->round_start) > ca->delay_min >> 4)
+				ca->found |= HYSTART_ACK_TRAIN;
+		}
+
+		/* obtain the minimum delay of more than sampling packets */
+		if (ca->sample_cnt < HYSTART_MIN_SAMPLES) {
+			if (ca->curr_rtt == 0 || ca->curr_rtt > delay)
+				ca->curr_rtt = delay;
+
+			ca->sample_cnt++;
+		} else {
+			if (ca->curr_rtt > ca->delay_min +
+					HYSTART_DELAY_THRESH(ca->delay_min>>4))
+				ca->found |= HYSTART_DELAY;
+		}
+		/*
+		 * Either one of two conditions are met,
+		 * we exit from slow start immediately.
+		 */
+		if (ca->found & hystart_detect)
+			tp->snd_ssthresh = tp->snd_cwnd;
+	}
+}
+
+/* Track delayed acknowledgment ratio using sliding window
+ * ratio = (15*ratio + sample) / 16
+ */
+static void bictcp_acked(struct sock *sk, u32 cnt, s32 rtt_us)
+{
+	const struct inet_connection_sock *icsk = inet_csk(sk);
+	const struct tcp_sock *tp = tcp_sk(sk);
+	struct bictcp *ca = inet_csk_ca(sk);
+	u32 delay;
+
+	if (icsk->icsk_ca_state == TCP_CA_Open) {
+		u32 ratio = ca->delayed_ack;
+
+		ratio -= ca->delayed_ack >> ACK_RATIO_SHIFT;
+		ratio += cnt;
+
+		ca->delayed_ack = clamp(ratio, 1U, ACK_RATIO_LIMIT);
+	}
+
+	/* Some calls are for duplicates without timetamps */
+	if (rtt_us < 0)
+		return;
+
+	/* Discard delay samples right after fast recovery */
+	if (ca->epoch_start && (s32)(tcp_time_stamp - ca->epoch_start) < HZ)
+		return;
+
+	delay = (rtt_us << 3) / USEC_PER_MSEC;
+	if (delay == 0)
+		delay = 1;
+
+	/* first time call or link delay decreases */
+	if (ca->delay_min == 0 || ca->delay_min > delay)
+		ca->delay_min = delay;
+
+	/* hystart triggers when cwnd is larger than some threshold */
+	if (hystart && tp->snd_cwnd <= tp->snd_ssthresh &&
+			tp->snd_cwnd >= hystart_low_window)
+		hystart_update(sk, delay);
+}
+
+/*mming*/
 
 static inline void mstcp_set_forced(struct sock *meta_sk, bool force)
 {
@@ -370,320 +672,21 @@ static void mstcp_ccc_init(struct sock *sk)
 	}
 }
 
-/* mming */
-
-static void bictcp_init(struct sock *sk)
-{
-	struct bictcp *ca = inet_csk_ca(sk);
-
-	bictcp_reset(ca);
-	ca->loss_cwnd = 0;
-
-	if (hystart)
-		bictcp_hystart_reset(sk);
-
-	if (!hystart && initial_ssthresh)
-		tcp_sk(sk)->snd_ssthresh = initial_ssthresh;
-}
-
-/* calculate the cubic root of x using a table lookup followed by one
- * Newton-Raphson iteration.
- * Avg err ~= 0.195%
- */
-static u32 cubic_root(u64 a)
-{
-	u32 x, b, shift;
-	/*
-	 * cbrt(x) MSB values for x MSB values in [0..63].
-	 * Precomputed then refined by hand - Willy Tarreau
-	 *
-	 * For x in [0..63],
-	 *   v = cbrt(x << 18) - 1
-	 *   cbrt(x) = (v[x] + 10) >> 6
-	 */
-	static const u8 v[] = {
-		/* 0x00 */    0,   54,   54,   54,  118,  118,  118,  118,
-		/* 0x08 */  123,  129,  134,  138,  143,  147,  151,  156,
-		/* 0x10 */  157,  161,  164,  168,  170,  173,  176,  179,
-		/* 0x18 */  181,  185,  187,  190,  192,  194,  197,  199,
-		/* 0x20 */  200,  202,  204,  206,  209,  211,  213,  215,
-		/* 0x28 */  217,  219,  221,  222,  224,  225,  227,  229,
-		/* 0x30 */  231,  232,  234,  236,  237,  239,  240,  242,
-		/* 0x38 */  244,  245,  246,  248,  250,  251,  252,  254,
-	};
-
-	b = fls64(a);
-	if (b < 7) {
-		/* a in [0..63] */
-		return ((u32)v[(u32)a] + 35) >> 6;
-	}
-
-	b = ((b * 84) >> 8) - 1;
-	shift = (a >> (b * 3));
-
-	x = ((u32)(((u32)v[shift] + 10) << b)) >> 6;
-
-	/*
-	 * Newton-Raphson iteration
-	 *                         2
-	 * x    = ( 2 * x  +  a / x  ) / 3
-	 *  k+1          k         k
-	 */
-	x = (2 * x + (u32)div64_u64(a, (u64)x * (u64)(x - 1)));
-	x = ((x * 341) >> 10);
-	return x;
-}
-
-/*
- * Compute congestion window to use.
- */
-static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
-{
-	u32 delta, bic_target, max_cnt;
-	u64 offs, t;
-
-	ca->ack_cnt++;	/* count the number of ACKs */
-
-	if (ca->last_cwnd == cwnd &&
-			(s32)(tcp_time_stamp - ca->last_time) <= HZ / 32)
-		return;
-
-	ca->last_cwnd = cwnd;
-	ca->last_time = tcp_time_stamp;
-
-	if (ca->epoch_start == 0) {
-		ca->epoch_start = tcp_time_stamp;	/* record the beginning of an epoch */
-		ca->ack_cnt = 1;			/* start counting */
-		ca->tcp_cwnd = cwnd;			/* syn with cubic */
-
-		if (ca->last_max_cwnd <= cwnd) {
-			ca->bic_K = 0;
-			ca->bic_origin_point = cwnd;
-		} else {
-			/* Compute new K based on
-			 * (wmax-cwnd) * (srtt>>3 / HZ) / c * 2^(3*bictcp_HZ)
-			 */
-			ca->bic_K = cubic_root(cube_factor
-					* (ca->last_max_cwnd - cwnd));
-			ca->bic_origin_point = ca->last_max_cwnd;
-		}
-	}
-
-	/* cubic function - calc*/
-	/* calculate c * time^3 / rtt,
-	 *  while considering overflow in calculation of time^3
-	 * (so time^3 is done by using 64 bit)
-	 * and without the support of division of 64bit numbers
-	 * (so all divisions are done by using 32 bit)
-	 *  also NOTE the unit of those veriables
-	 *	  time  = (t - K) / 2^bictcp_HZ
-	 *	  c = bic_scale >> 10
-	 * rtt  = (srtt >> 3) / HZ
-	 * !!! The following code does not have overflow problems,
-	 * if the cwnd < 1 million packets !!!
-	 */
-
-	t = (s32)(tcp_time_stamp - ca->epoch_start);
-	t += msecs_to_jiffies(ca->delay_min >> 3);
-	/* change the unit from HZ to bictcp_HZ */
-	t <<= BICTCP_HZ;
-	do_div(t, HZ);
-
-	if (t < ca->bic_K)		/* t - K */
-		offs = ca->bic_K - t;
-	else
-		offs = t - ca->bic_K;
-
-	/* c/rtt * (t-K)^3 */
-	delta = (cube_rtt_scale * offs * offs * offs) >> (10+3*BICTCP_HZ);
-	if (t < ca->bic_K)                                	/* below origin*/
-		bic_target = ca->bic_origin_point - delta;
-	else                                                	/* above origin*/
-		bic_target = ca->bic_origin_point + delta;
-
-	/* cubic function - calc bictcp_cnt*/
-	if (bic_target > cwnd) {
-		ca->cnt = cwnd / (bic_target - cwnd);
-	} else {
-		ca->cnt = 100 * cwnd;              /* very small increment*/
-	}
-
-	/*
-	 * The initial growth of cubic function may be too conservative
-	 * when the available bandwidth is still unknown.
-	 */
-	if (ca->last_max_cwnd == 0 && ca->cnt > 20)
-		ca->cnt = 20;	/* increase cwnd 5% per RTT */
-
-	/* TCP Friendly */
-	if (tcp_friendliness) {
-		u32 scale = beta_scale;
-		delta = (cwnd * scale) >> 3;
-		while (ca->ack_cnt > delta) {		/* update tcp cwnd */
-			ca->ack_cnt -= delta;
-			ca->tcp_cwnd++;
-		}
-
-		if (ca->tcp_cwnd > cwnd){	/* if bic is slower than tcp */
-			delta = ca->tcp_cwnd - cwnd;
-			max_cnt = cwnd / delta;
-			if (ca->cnt > max_cnt)
-				ca->cnt = max_cnt;
-		}
-	}
-
-	ca->cnt = (ca->cnt << ACK_RATIO_SHIFT) / ca->delayed_ack;
-	if (ca->cnt == 0)			/* cannot be zero */
-		ca->cnt = 1;
-}
-
-static void bictcp_cong_avoid(struct sock *sk, u32 ack, u32 acked,
-		u32 in_flight)
-{
-	struct tcp_sock *tp = tcp_sk(sk);
-	struct bictcp *ca = inet_csk_ca(sk);
-
-	if (!tcp_is_cwnd_limited(sk, in_flight))
-		return;
-
-	if (tp->snd_cwnd <= tp->snd_ssthresh) 
-	{
-		if (hystart && after(ack, ca->end_seq))
-			bictcp_hystart_reset(sk);
-		tcp_slow_start(tp, acked);
-	} 
-	else 
-	{
-		bictcp_update(ca, tp->snd_cwnd);
-		tcp_cong_avoid_ai(tp, ca->cnt);
-	}
-
-}
-
-static u32 bictcp_recalc_ssthresh(struct sock *sk)
-{
-	const struct tcp_sock *tp = tcp_sk(sk);
-	struct bictcp *ca = inet_csk_ca(sk);
-
-	ca->epoch_start = 0;	/* end of epoch */
-
-	/* Wmax and fast convergence */
-	if (tp->snd_cwnd < ca->last_max_cwnd && fast_convergence)
-		ca->last_max_cwnd = (tp->snd_cwnd * (BICTCP_BETA_SCALE + beta))
-			/ (2 * BICTCP_BETA_SCALE);
-	else
-		ca->last_max_cwnd = tp->snd_cwnd;
-
-	ca->loss_cwnd = tp->snd_cwnd;
-
-	return max((tp->snd_cwnd * beta) / BICTCP_BETA_SCALE, 2U);
-}
-
-static u32 bictcp_undo_cwnd(struct sock *sk)
-{
-	struct bictcp *ca = inet_csk_ca(sk);
-
-	return max(tcp_sk(sk)->snd_cwnd, ca->loss_cwnd);
-}
-
-static void bictcp_state(struct sock *sk, u8 new_state)
-{
-	if (new_state == TCP_CA_Loss) {
-		bictcp_reset(inet_csk_ca(sk));
-		bictcp_hystart_reset(sk);
-	}
-}
-
-static void hystart_update(struct sock *sk, u32 delay)
-{
-	struct tcp_sock *tp = tcp_sk(sk);
-	struct bictcp *ca = inet_csk_ca(sk);
-
-	if (!(ca->found & hystart_detect)) {
-		u32 now = bictcp_clock();
-
-		/* first detection parameter - ack-train detection */
-		if ((s32)(now - ca->last_ack) <= hystart_ack_delta) {
-			ca->last_ack = now;
-			if ((s32)(now - ca->round_start) > ca->delay_min >> 4)
-				ca->found |= HYSTART_ACK_TRAIN;
-		}
-
-		/* obtain the minimum delay of more than sampling packets */
-		if (ca->sample_cnt < HYSTART_MIN_SAMPLES) {
-			if (ca->curr_rtt == 0 || ca->curr_rtt > delay)
-				ca->curr_rtt = delay;
-
-			ca->sample_cnt++;
-		} else {
-			if (ca->curr_rtt > ca->delay_min +
-					HYSTART_DELAY_THRESH(ca->delay_min>>4))
-				ca->found |= HYSTART_DELAY;
-		}
-		/*
-		 * Either one of two conditions are met,
-		 * we exit from slow start immediately.
-		 */
-		if (ca->found & hystart_detect)
-			tp->snd_ssthresh = tp->snd_cwnd;
-	}
-}
-
-/* Track delayed acknowledgment ratio using sliding window
- * ratio = (15*ratio + sample) / 16
- */
-static void bictcp_acked(struct sock *sk, u32 cnt, s32 rtt_us)
-{
-	const struct inet_connection_sock *icsk = inet_csk(sk);
-	const struct tcp_sock *tp = tcp_sk(sk);
-	struct bictcp *ca = inet_csk_ca(sk);
-	u32 delay;
-
-	if (icsk->icsk_ca_state == TCP_CA_Open) {
-		u32 ratio = ca->delayed_ack;
-
-		ratio -= ca->delayed_ack >> ACK_RATIO_SHIFT;
-		ratio += cnt;
-
-		ca->delayed_ack = clamp(ratio, 1U, ACK_RATIO_LIMIT);
-	}
-
-	/* Some calls are for duplicates without timetamps */
-	if (rtt_us < 0)
-		return;
-
-	/* Discard delay samples right after fast recovery */
-	if (ca->epoch_start && (s32)(tcp_time_stamp - ca->epoch_start) < HZ)
-		return;
-
-	delay = (rtt_us << 3) / USEC_PER_MSEC;
-	if (delay == 0)
-		delay = 1;
-
-	/* first time call or link delay decreases */
-	if (ca->delay_min == 0 || ca->delay_min > delay)
-		ca->delay_min = delay;
-
-	/* hystart triggers when cwnd is larger than some threshold */
-	if (hystart && tp->snd_cwnd <= tp->snd_ssthresh &&
-			tp->snd_cwnd >= hystart_low_window)
-		hystart_update(sk, delay);
-}
 
 static struct tcp_congestion_ops cubictcp __read_mostly = {
-	.init		= mptcp_ccc_init, //bictcp_init,//changed by mming
-	.ssthresh	= bictcp_recalc_ssthresh,
+	.init		= mstcp_ccc_init, //bictcp_init,//changed by mming
 	.cong_avoid	= mstcp_ccc_cong_avoid, //bictcp_cong_avoid,//changed by mming
 	.set_state	= mstcp_ccc_set_state, //bictcp_state,//changed by mming
+	.cwnd_event     = mstcp_ccc_cwnd_event,//added by mming
+	.ssthresh	= bictcp_recalc_ssthresh,
 	.undo_cwnd	= bictcp_undo_cwnd,
-	.cwnd_event     = mstcp_ccc_cwnd_event,
 	.pkts_acked     = bictcp_acked,
 	.owner		= THIS_MODULE,
 	.name		= "cubic",
 };
 
 //	  .ssthresh       = tcp_reno_ssthresh,
-         //.min_cwnd       = tcp_reno_min_cwnd,
+//.min_cwnd       = tcp_reno_min_cwnd,
 
 
 
