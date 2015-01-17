@@ -654,22 +654,6 @@ static void mstcp_ccc_init(struct sock *sk)
 		mstcp_set_forced(mptcp_meta_sk(sk), 0);
 		mstcp_set_alpha(mptcp_meta_sk(sk), 1);
 	}
-	/* If we do not mptcp, behave like reno: return */
-
-	if (false)//test
-	{
-		mstcp_ccc_sk_can_send(sk);//ok
-		mstcp_get_alpha(sk);//ok
-		mstcp_set_alpha(sk, 1);//ok
-		mstcp_ccc_scale(2, 30);//ok
-		mstcp_get_forced(sk);//ok
-		mstcp_set_forced(sk, true);//ok
-		mstcp_ccc_set_state(sk, 2);//ok
-		mstcp_ccc_recalc_alpha(sk);//ok
-		mstcp_ccc_cong_avoid(sk, 2, 2, 2);//ok
-		//printf("%s:%s:L=%d\n", __FILE__, __func__, __LINE__);//mming
-		//exit(0);
-	}
 }
 
 

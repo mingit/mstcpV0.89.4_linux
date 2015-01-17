@@ -111,8 +111,6 @@ static void hstcp_init(struct sock *sk)
 
 static void hstcp_cong_avoid(struct sock *sk, u32 ack, u32 acked, u32 in_flight)
 {
-	printf("%s:%s:L=%d", __FILE__, __func__, __LINE__);//mming
-	exit(0);
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct hstcp *ca = inet_csk_ca(sk);
 
@@ -165,7 +163,6 @@ static struct tcp_congestion_ops tcp_highspeed __read_mostly = {
 	.ssthresh	= hstcp_ssthresh,
 	.cong_avoid	= hstcp_cong_avoid,
 	.min_cwnd	= tcp_reno_min_cwnd,
-
 	.owner		= THIS_MODULE,
 	.name		= "highspeed"
 };
