@@ -149,7 +149,7 @@ int tcp_set_default_congestion_control(const char *name)
 		ca->flags |= TCP_CONG_NON_RESTRICTED;	/* default is always allowed */
 		list_move(&ca->list, &tcp_cong_list);//move ca to the head of the list
 		ret = 0;
-		printf("%s:%s:L=%d: ca->name=%s, name=%s\n", __FILE__, __func__, __LINE__, ca->name, name);//mming
+		//printf("%s:%s:L=%d: ca->name=%s, name=%s\n", __FILE__, __func__, __LINE__, ca->name, name);//mming
 	}
 	spin_unlock(&tcp_cong_list_lock);
 

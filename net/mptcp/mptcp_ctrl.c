@@ -611,15 +611,49 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 {
 	struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
 	u8 cnt_subflows = mpcb->cnt_subflows;
+	u8 cnt_established = mpcb->cnt_established;
 	char algo[TCP_CA_NAME_MAX];
-	switch(cnt_subflows)
+	switch(cnt_established+1)
 	{
 		case 1:
-			strcpy(algo, "reno");//reno, highspeed, htcp, cubic, illinois, cong, bic,westwood, vegas
+			strcpy(algo, "reno");//reno, highspeed, htcp, cubic, illinois, bic,westwood, vegas, hybla
 			break;
 		case 2:
+			strcpy(algo, "lp");
+			break;
+		case 3:
 			strcpy(algo, "westwood");
 			break;
+		case 4:
+			strcpy(algo, "cubic");
+			break;
+		case 5:
+			strcpy(algo, "reno");
+			break;
+		case 6:
+			strcpy(algo, "highspeed");
+			break;
+		case 7:
+			strcpy(algo, "htcp");
+			break;
+		case 8:
+			strcpy(algo, "illinois");
+			break;
+		case 9:
+			strcpy(algo, "bic");
+			break;
+		case 10:
+			strcpy(algo, "vegas");
+			break;
+		case 11:
+			strcpy(algo, "hybla");
+			break;
+		case 12:
+			strcpy(algo, "scalable");
+			break;
+		default:
+			printf("!!!%s:%s:L=%d: error exit!cnt_established=%d\n", __FILE__, __func__, __LINE__,cnt_established);
+			exit(0);
 	}
 
 	if (tcp_set_congestion_control(sk, algo)!=0)
@@ -627,8 +661,8 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 		printf("!!!%s:%s:L=%d: FAILED to set CA to %s exit!\n", __FILE__, __func__, __LINE__, algo);
 		exit(0);
 	}
-	//else
-		//printf("%s:%s:L=%d: cnt_subflows=%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_subflows, algo);
+	else
+		printf("%s:%s:L=%d: cnt_established =%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_established, algo);
 }
 
 void mptcp_init_congestion_control(struct sock *sk)
@@ -664,7 +698,7 @@ use_default:
 	tcp_init_congestion_control(sk);
 
 	struct inet_connection_sock *icsk_tem = inet_csk(sk);//mming
-	printf("%s:%s:L=%d: CA is set to %s\n", __FILE__, __func__, __LINE__, icsk_tem->icsk_ca_ops->name);//mming
+	//printf("%s:%s:L=%d: CA is set to %s\n", __FILE__, __func__, __LINE__, icsk_tem->icsk_ca_ops->name);//mming
 }
 
 u32 mptcp_secret[MD5_MESSAGE_BYTES / 4] ____cacheline_aligned;
