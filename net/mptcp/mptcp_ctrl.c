@@ -615,10 +615,10 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 	switch(cnt_subflows)
 	{
 		case 1:
-			strcpy(algo, "cubic");//reno, highspeed, htcp, cubic, illinois, cong, bic,westwood, vegas
+			strcpy(algo, "reno");//reno, highspeed, htcp, cubic, illinois, cong, bic,westwood, vegas
 			break;
 		case 2:
-			strcpy(algo, "htcp");
+			strcpy(algo, "westwood");
 			break;
 	}
 
