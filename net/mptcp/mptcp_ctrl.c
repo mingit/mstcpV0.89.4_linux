@@ -616,25 +616,25 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 	switch(cnt_established+1)
 	{
 		case 1:
-			strcpy(algo, "reno");//reno, highspeed, htcp, cubic, illinois, bic,westwood, vegas, hybla
+			strcpy(algo, "reno");//reno, highspeed, veno, htcp, cubic, illinois, bic,westwood, vegas, hybla
 			break;
 		case 2:
-			strcpy(algo, "lp");
-			break;
-		case 3:
-			strcpy(algo, "westwood");
-			break;
-		case 4:
 			strcpy(algo, "cubic");
 			break;
+		case 3:
+			strcpy(algo, "veno");//designed for wireless networks
+			break;
+		case 4:
+			strcpy(algo, "vegas");//designed for high delay networks
+			break;
 		case 5:
-			strcpy(algo, "reno");
+			strcpy(algo, "htcp");
 			break;
 		case 6:
 			strcpy(algo, "highspeed");
 			break;
 		case 7:
-			strcpy(algo, "htcp");
+			strcpy(algo, "westwood");
 			break;
 		case 8:
 			strcpy(algo, "illinois");
@@ -643,7 +643,7 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 			strcpy(algo, "bic");
 			break;
 		case 10:
-			strcpy(algo, "vegas");
+			strcpy(algo, "lp");
 			break;
 		case 11:
 			strcpy(algo, "hybla");
@@ -652,7 +652,7 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 			strcpy(algo, "scalable");
 			break;
 		default:
-			printf("!!!%s:%s:L=%d: error exit!cnt_established=%d\n", __FILE__, __func__, __LINE__,cnt_established);
+			printf("!!!%s:%s:L=%d: Error!cnt_established=%d\n", __FILE__, __func__, __LINE__,cnt_established);
 			exit(0);
 	}
 

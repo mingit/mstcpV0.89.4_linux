@@ -16,7 +16,7 @@ struct ndiffports_priv {
 	struct mptcp_cb *mpcb;
 };
 
-static int num_subflows __read_mostly = 12;//<=12
+static int num_subflows __read_mostly = 4;//<=12 because there are currently 12 different cognestion control algorithms in linux kernel
 module_param(num_subflows, int, 0644);
 MODULE_PARM_DESC(num_subflows, "choose the number of subflows per MPTCP connection");
 

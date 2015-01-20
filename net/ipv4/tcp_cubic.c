@@ -669,11 +669,6 @@ static struct tcp_congestion_ops cubictcp __read_mostly = {
 	.name		= "cubic",
 };
 
-//	  .ssthresh       = tcp_reno_ssthresh,
-//.min_cwnd       = tcp_reno_min_cwnd,
-
-
-
 static int __init cubictcp_register(void)
 {
 	BUILD_BUG_ON(sizeof(struct bictcp) > ICSK_CA_PRIV_SIZE);
