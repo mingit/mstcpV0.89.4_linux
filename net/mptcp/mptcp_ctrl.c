@@ -58,8 +58,8 @@
 #include <linux/atomic.h>
 #include <linux/sysctl.h>
 
-#include <stdio.h>//mming
-#include <string.h>//mming
+//#include <stdio.h>//mming
+//#include <string.h>//mming
 static struct kmem_cache *mptcp_sock_cache __read_mostly;
 static struct kmem_cache *mptcp_cb_cache __read_mostly;
 static struct kmem_cache *mptcp_tw_cache __read_mostly;
@@ -652,17 +652,16 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 			strcpy(algo, "scalable");
 			break;
 		default:
-			printf("!!!%s:%s:L=%d: Error!cnt_established=%d\n", __FILE__, __func__, __LINE__,cnt_established);
+			//printf("!!!%s:%s:L=%d: Error!cnt_established=%d\n", __FILE__, __func__, __LINE__,cnt_established);
 			exit(0);
 	}
 
 	if (tcp_set_congestion_control(sk, algo)!=0)
 	{
-		printf("!!!%s:%s:L=%d: FAILED to set CA to %s exit!\n", __FILE__, __func__, __LINE__, algo);
-		exit(0);
+		//printf("!!!%s:%s:L=%d: FAILED to set CA to %s exit!\n", __FILE__, __func__, __LINE__, algo);
+		//exit(0);
 	}
-	else
-		printf("%s:%s:L=%d: cnt_established =%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_established, algo);
+		//printf("%s:%s:L=%d: cnt_established =%d, set CA to %s\n", __FILE__, __func__, __LINE__, cnt_established, algo);
 }
 
 void mptcp_init_congestion_control(struct sock *sk)

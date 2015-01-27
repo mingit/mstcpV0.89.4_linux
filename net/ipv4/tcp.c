@@ -282,7 +282,7 @@
 #include <asm/ioctls.h>
 #include <net/busy_poll.h>
 
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 

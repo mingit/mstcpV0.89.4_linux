@@ -19,7 +19,7 @@
 #include <net/tcp.h>
 
 #include <net/mptcp.h>//mming
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 
 #define ALPHA_SHIFT	7
 #define ALPHA_SCALE	(1u<<ALPHA_SHIFT)

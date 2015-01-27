@@ -8,7 +8,7 @@
 
 #include <linux/module.h>
 #include <net/tcp.h>
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 #include <net/mptcp.h>//mming
 
 /* From AIMD tables from RFC 3649 appendix B,

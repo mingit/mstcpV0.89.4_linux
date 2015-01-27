@@ -28,7 +28,7 @@
 #include <net/tcp.h>
 
 #include <net/mptcp.h>//mming
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 
 /* TCP Westwood structure */
 struct westwood {
@@ -404,6 +404,7 @@ exit:
 
 static void mstcp_ccc_cwnd_event(struct sock *sk, enum tcp_ca_event event)
 {
+	tcp_westwood_event(sk, event);
 	if (event == CA_EVENT_LOSS)
 		mstcp_ccc_recalc_alpha(sk);
 }

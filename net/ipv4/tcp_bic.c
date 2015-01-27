@@ -18,7 +18,7 @@
 #include <net/tcp.h>
 
 #include <net/mptcp.h>//mming
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 
 #define BICTCP_BETA_SCALE    1024	/* Scale factor beta calculation
 					 * max_cwnd = snd_cwnd * beta

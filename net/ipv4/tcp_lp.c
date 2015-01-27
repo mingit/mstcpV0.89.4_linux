@@ -36,7 +36,7 @@
 #include <linux/module.h>
 #include <net/tcp.h>
 #include <net/mptcp.h>//mming
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 
 /* resolution of owd */
 #define LP_RESOL       1000

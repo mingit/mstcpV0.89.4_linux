@@ -13,7 +13,7 @@
 
 #include <net/tcp.h>
 #include <net/mptcp.h>//mming
-#include <stdio.h>//mming
+//#include <stdio.h>//mming
 
 #include "tcp_vegas.h"
 
