@@ -651,9 +651,6 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 		case 12:
 			strcpy(algo, "scalable");
 			break;
-		default:
-			//printf("!!!%s:%s:L=%d: Error!cnt_established=%d\n", __FILE__, __func__, __LINE__,cnt_established);
-			exit(0);
 	}
 
 	if (tcp_set_congestion_control(sk, algo)!=0)
@@ -696,7 +693,8 @@ use_default:
 	mptcp_set_subflow_congestion_control (sk);//mming
 	tcp_init_congestion_control(sk);
 
-	struct inet_connection_sock *icsk_tem = inet_csk(sk);//mming
+	struct inet_connection_sock *icsk_tem;
+	icsk_tem = inet_csk(sk);//mming
 	//printf("%s:%s:L=%d: CA is set to %s\n", __FILE__, __func__, __LINE__, icsk_tem->icsk_ca_ops->name);//mming
 }
 
