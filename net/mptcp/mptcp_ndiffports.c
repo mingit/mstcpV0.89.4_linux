@@ -3,7 +3,6 @@
 #include <net/mptcp.h>
 #include <net/mptcp_v4.h>
 
-#include <stdio.h>//mming
 
 #if IS_ENABLED(CONFIG_IPV6)
 #include <net/mptcp_v6.h>
