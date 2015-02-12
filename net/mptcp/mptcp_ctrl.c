@@ -616,13 +616,13 @@ void mptcp_set_subflow_congestion_control(struct sock *sk)
 	switch(cnt_established+1)
 	{
 		case 1:
-			strcpy(algo, "highspeed");//reno, highspeed, veno, htcp, cubic, illinois, bic,westwood, vegas, hybla
+			strcpy(algo, "reno");//reno, highspeed, veno, htcp, cubic, illinois, bic,westwood, vegas, hybla
 			break;
 		case 2:
 			strcpy(algo, "cubic");
 			break;
 		case 3:
-			strcpy(algo, "veno");//designed for wireless networks
+			strcpy(algo, "highspeed");//reno is designed for wireless networks
 			break;
 		case 4:
 			strcpy(algo, "vegas");//designed for high delay networks
